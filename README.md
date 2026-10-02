@@ -1,4 +1,4 @@
-# PortfolioPilot: Milestone 14 — Replayable, Authenticated SSE
+# Replayable, Authenticated SSE
 
 This learning activity adds a secure event stream to the PortfolioPilot API. Milestone 14 is
 complete; the next milestone adds the browser connection manager and automatic snapshot recovery.
