@@ -1,0 +1,254 @@
+generator client {
+  provider = "prisma-client"
+  output = "../src/generated/prisma"
+}
+datasource db {
+  provider = "postgresql"
+}
+enum TransactionSide {
+  BUY
+  SELL
+}
+model User {
+  id String @id @default(cuid())
+  name String
+  email String @unique
+  emailVerified Boolean @default(false)
+  image String?
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+  sessions Session[]
+  accounts Account[]
+  portfolios Portfolio[]
+  watchlist WatchlistEntry[]
+  outboxEvents OutboxEvent[]
+}
+model Session {
+  id String @id @default(cuid())
+  token String @unique
+  userId String
+  expiresAt DateTime @db.Timestamptz(3)
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  @@index([userId])
+  @@index([expiresAt])
+}
+model Account {
+  id String @id @default(cuid())
+  accountId String
+  providerId String
+  userId String
+  accessToken String?
+  refreshToken String?
+  idToken String?
+  accessTokenExpiresAt DateTime? @db.Timestamptz(3)
+  refreshTokenExpiresAt DateTime? @db.Timestamptz(3)
+  scope String?
+  password String?
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  @@unique([providerId, accountId])
+  @@index([userId])
+}
+model Verification {
+  id String @id @default(cuid())
+  identifier String
+  value String
+  expiresAt DateTime @db.Timestamptz(3)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+  @@index([identifier])
+  @@index([expiresAt])
+}
+model Portfolio {
+  id String @id @default(cuid())
+  ownerId String
+  name String
+  currency String @default("USD") @db.VarChar(3)
+  archivedAt DateTime? @db.Timestamptz(3)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+  owner User @relation(fields: [ownerId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  transactions PortfolioTransaction[]
+  @@unique([ownerId, name])
+  @@index([ownerId, createdAt, id])
+}
+model Security {
+  id String @id @default(cuid())
+  symbol String @db.VarChar(32)
+  exchangeMic String @db.Char(4)
+  name String
+  currency String @default("USD") @db.VarChar(3)
+  assetType String @default("STOCK")
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+  transactions PortfolioTransaction[]
+  watchlist WatchlistEntry[]
+  quotes QuoteSnapshot[]
+  news NewsArticleSecurity[]
+  @@unique([exchangeMic, symbol])
+  @@index([symbol])
+}
+model PortfolioTransaction {
+  id String @id @default(cuid())
+  ledgerOrder BigInt @unique @default(autoincrement())
+  idempotencyKey String? @db.VarChar(128)
+  requestFingerprint String? @db.VarChar(64)
+  portfolioId String
+  securityId String
+  side TransactionSide
+  quantity Decimal @db.Decimal(28, 10)
+  price Decimal @db.Decimal(28, 10)
+  fees Decimal @default(0) @db.Decimal(28, 10)
+  amount Decimal @db.Decimal(38, 10)
+  occurredAt DateTime @db.Timestamptz(3)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+  portfolio Portfolio @relation(fields: [portfolioId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  security Security @relation(fields: [securityId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  @@index([portfolioId, occurredAt, id])
+  @@index([portfolioId, securityId, occurredAt, id])
+  @@index([securityId])
+  @@unique([portfolioId, idempotencyKey])
+  @@index([portfolioId, occurredAt, ledgerOrder], map: "PortfolioTransaction_ledger_page")
+}
+model WatchlistEntry {
+  id String @id @default(cuid())
+  ownerId String
+  securityId String
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+  owner User @relation(fields: [ownerId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  security Security @relation(fields: [securityId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  @@unique([ownerId, securityId])
+  @@index([ownerId, createdAt, id])
+  @@index([securityId])
+}
+model QuoteSnapshot {
+  id String @id @default(cuid())
+  securityId String
+  provider String
+  asOf DateTime @db.Timestamptz(3)
+  price Decimal @db.Decimal(28, 10)
+  currency String @default("USD") @db.VarChar(3)
+  isSynthetic Boolean @default(false)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+  security Security @relation(fields: [securityId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  @@unique([securityId, provider, asOf])
+  @@index([securityId, asOf])
+}
+model NewsArticle {
+  id String @id @default(cuid())
+  provider String
+  providerArticleId String
+  title String
+  summary String
+  url String
+  canonicalKey String? @unique
+  publishedAt DateTime @db.Timestamptz(3)
+  isSynthetic Boolean @default(false)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+  securities NewsArticleSecurity[]
+  observations NewsObservation[]
+  sources NewsSource[]
+  urls NewsUrl[]
+  @@unique([provider, providerArticleId])
+  @@index([publishedAt, id])
+}
+
+model IngestionState {
+  key String @id
+  checkpoint String?
+  cursor String?
+  mockStartAt DateTime @default(now()) @db.Timestamptz(3)
+  leaseOwner String?
+  leaseUntil DateTime? @db.Timestamptz(3)
+  generation Int @default(0)
+  failures Int @default(0)
+  nextRunAt DateTime @default(now()) @db.Timestamptz(3)
+}
+
+// Immutable normalized observations; no raw vendor body or full article text.
+model NewsObservation {
+  id String @id
+  articleId String
+  provider String
+  recordId String
+  fingerprint String
+  providerAt DateTime @db.Timestamptz(3)
+  observedAt DateTime @default(now()) @db.Timestamptz(3)
+  metadata Json
+  article NewsArticle @relation(fields: [articleId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  @@unique([provider, recordId, fingerprint])
+  @@index([articleId, providerAt])
+}
+
+model NewsSource {
+  provider String
+  recordId String
+  articleId String
+  article NewsArticle @relation(fields: [articleId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  @@id([provider, recordId])
+  @@index([articleId])
+}
+
+model NewsUrl {
+  url String @id
+  articleId String
+  article NewsArticle @relation(fields: [articleId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  @@index([articleId])
+}
+model NewsArticleSecurity {
+  newsArticleId String
+  securityId String
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+  article NewsArticle @relation(fields: [newsArticleId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  security Security @relation(fields: [securityId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  @@id([newsArticleId, securityId])
+  @@index([securityId, newsArticleId])
+}
+
+enum OutboxStatus {
+  PENDING
+  PUBLISHED
+  DEAD
+}
+
+// Transactional outbox: written in the same PostgreSQL transaction as the domain change.
+// id is the stable domain event UUID; streamEntryId is only the Redis delivery cursor.
+model OutboxEvent {
+  id String @id @db.Uuid
+  sequence BigInt @unique @default(autoincrement())
+  type String @db.VarChar(64)
+  schemaVersion Int
+  occurredAt DateTime @db.Timestamptz(3)
+  audience String @db.VarChar(16)
+  ownerId String?
+  portfolioId String?
+  entityType String @db.VarChar(64)
+  entityId String
+  payload Json
+  status OutboxStatus @default(PENDING)
+  attempts Int @default(0)
+  // Stamped by PostgreSQL, never the app clock: the claim query compares it with clock_timestamp().
+  availableAt DateTime @default(dbgenerated("clock_timestamp()")) @db.Timestamptz(3)
+  leaseOwner String?
+  leaseUntil DateTime? @db.Timestamptz(3)
+  claimToken String? @db.Uuid
+  publishedAt DateTime? @db.Timestamptz(3)
+  streamKey String?
+  streamEntryId String?
+  lastError String? @db.VarChar(500)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  owner User? @relation(fields: [ownerId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  @@index([status, availableAt, sequence], map: "OutboxEvent_dispatch")
+  @@index([ownerId, sequence])
+  @@index([status, publishedAt])
+}
